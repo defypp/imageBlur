@@ -1,7 +1,13 @@
 # imageBlur
 imageBlur functions Peel off from OpenCV
 
-#   快速中值滤波
+##TODO
++ CUDA support
++ gussian filter
++ bilateralblur
++ ...
+
+##   快速中值滤波
 
 ### 原理
 
@@ -82,3 +88,6 @@ Output: Image Y of same size
 ```
 
 针对上述OP，可以便捷的采用并行化加速提高运算速度和降低执行次数
+
+
+
