@@ -1,0 +1,46 @@
+{
+    "tasks": [//按照depends解析任务执行顺序，依次执行创建build文件，cmake ../   make -j8 编译流程
+        {//任务1 模拟终端创建build文件夹
+            "type": "shell",
+            "label": "CreateBuildDir",
+            "command": "mkdir", // 命令行参数
+            "args": [
+                "-p",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+        },
+        {//任务2，cmake 编译
+            "type": "shell",
+            "label": "cmake",
+            "command": "cmake",
+            "args": [ //cmake 相关参数配置
+                "../"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/build" //执行命令的路径
+            },
+            "dependsOn":[ //some {} some {}
+                "CreateBuildDir"
+            ]
+        },
+        {//任务3,make
+            "type":"shell",
+            "label":"make",
+            "command":"make",
+            "args": ["-j", "8"],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "dependsOn":[
+                "cmake"
+            ]
+        },
+    ],
+    "version": "2.0.0"
+}
