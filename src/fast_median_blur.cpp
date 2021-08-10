@@ -126,8 +126,8 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
         if (w == 1 || h == 1)
         {
             int len = w + h - 1;
-            int sdelta = h == 1 ? cn : sstep;//如果是一行的情况，[1,2,3] [4,5,6] [7,8,9] sdelta=3,当ptr指向4, 则 p0 = 1, p1 = 4, p2 = 7
-            int sdelta0 = h == 1 ? 0 : sstep - cn;//无论三通道还是单通道好像都是0,用于字节对齐的，
+            int sdelta = h == 1 ? cn : sstep;//eg，[1,2,3] [4,5,6] [7,8,9] sdelta=3,when ptr->4, then p0 = 1, p1 = 4, p2 = 7
+            int sdelta0 = h == 1 ? 0 : sstep - cn;
             int ddelta = h == 1 ? cn : dstep;//
 
             for (i = 0; i < len; i++, sptr += sdelta0, dptr += ddelta){
@@ -591,18 +591,15 @@ static void medianBlur8uO1(const uchar* sptr, uchar* dptr, int w, int h, int cn,
                     COP( c, j, p1[j*cn + c], ++ );
                 }
                 // First column initialization
-                // 将h_fine直方图的信息添加到H的kernel直方图中
                 for( k = 0; k < 16; ++k )
-                    histogram_muladd( 2*r+1, &h_fine[16*n*(16*c+k)], &H[c].fine[k][0] ); //获取 h_fine第一列的指针 和 H的最低位指针，并对第一列的数据进行赋值
-                    // for i in 16 : y[i] = (HT)(y[i] + a * x[i]);
+                    histogram_muladd( 2*r+1, &h_fine[16*n*(16*c+k)], &H[c].fine[k][0] ); 
+                    //get h_fine first col ptr 和 H ptr，cp fisrt col data
 
             #if MEDIAN_HAVE_SIMD
                 if( useSIMD )
                 {   
                     for( j = 0; j < 2*r; ++j )
                         histogram_add_simd( &h_coarse[16*(n*c+j)], H[c].coarse );
-                    //依次增加一列，更新H矩阵
-                    //hfine和H.fine的前2r列不需要更新吗？，只有在find median at fine level会需要
                     for( j = r; j < n-r; j++ )
                     {
                         //t = (2r+1)^2/2;
