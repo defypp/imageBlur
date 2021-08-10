@@ -66,10 +66,8 @@ const uchar g_Saturate8u[] =
 	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 	255
 };
-//配合swap a<b 进行交换 或min max使用，实现对uint的快速运算
-//当t<0情况下，返回值为0, t>0返回
-//swap只有三次“+”操作，一般情况需要判断，申请额外变量和赋值
-#define CV_FAST_CAST_8U(t)   (assert(-256 <= (t) && (t) <= 512), g_Saturate8u[(t)+256]) // release 模式下，assert不一定起作用，所以没有任何计算，可以提高速度
+
+#define CV_FAST_CAST_8U(t)   (assert(-256 <= (t) && (t) <= 512), g_Saturate8u[(t)+256]) // release mode assert do nothing
 
 #define CV_MIN_8U(a,b)       ((a) - CV_FAST_CAST_8U((a) - (b)))
 #define CV_MAX_8U(a,b)       ((a) + CV_FAST_CAST_8U((b) - (a)))
@@ -93,16 +91,16 @@ struct MinMaxVec8u
 	typedef uchar value_type;
 	typedef __m128i arg_type;
 	
-	enum { SIZE = 16 };//寄存器总共128位，则 128 / 8 =16， 即每次可以处理16个数
+	enum { SIZE = 16 };//register 128bit， 128/8=16， handle 16 value everytime
 
-	//使用_mm_loadu_si128(加载一个128位有符号整形到寄存器中，无16字节对齐，一次性取出16个数)
+	//_mm_loadu_si128(load 128bit signed int to register)
 	arg_type load(const uchar* ptr) { return _mm_loadu_si128((const __m128i*)ptr); }
 	void store(uchar* ptr, arg_type val) { _mm_storeu_si128((__m128i*)ptr, val); }
 	void operator()(arg_type& a, arg_type& b) const
 	{
 		arg_type t = a;
-		a = _mm_min_epu8(a, b);//计算最小
-		b = _mm_max_epu8(b, t);//计算最大
+		a = _mm_min_epu8(a, b);//get min
+		b = _mm_max_epu8(b, t);//get max
 	}
 };
 
@@ -110,9 +108,9 @@ struct MinMaxVec8u
 //simd support 
 static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int cn, int sstep, int dstep, int ksize) {
 
-    sstep /= sizeof(sptr[0]);//某行存了多少数
+    sstep /= sizeof(sptr[0]);
 	typedef MinMax8u Op;
-	typedef Op::value_type T;//数据类型
+	typedef Op::value_type T;
 	typedef Op::arg_type WT;
 
 	typedef MinMaxVec8u VecOp;
@@ -122,11 +120,9 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
 	Op op;
 	VecOp vop;
 
-    bool useSIMD = true;//check cpu support sse2
+    bool useSIMD = true;//check cpu support sse2  default true TODO
 
 	if(ksize == 3) {
-        // TODO
-	    // 为什么不能统一到下面的计算中？
         if (w == 1 || h == 1)
         {
             int len = w + h - 1;
@@ -150,13 +146,11 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
         }
 
         w *= cn;
-        //是不是也可以放到一起
         for (i = 0; i < h; i++, dptr += dstep)
         {
-            //三行的指针
-            const T* row0 = sptr + MAX(i - 1, 0)*sstep;			//越界
+            const T* row0 = sptr + MAX(i - 1, 0)*sstep;			
             const T* row1 = sptr + i*sstep;
-            const T* row2 = sptr + MIN(i + 1, h - 1)*sstep;		//越界
+            const T* row2 = sptr + MIN(i + 1, h - 1)*sstep;		
             int limit = cn;
 
             for (j = 0;;)
@@ -164,25 +158,25 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
                 //对channel通道的每个数
                 for (; j < limit; j++)
                 {
-                    int j0 = j >= cn ? j - cn : j;    // 越界
-                    int j2 = j < w - cn ? j + cn : j; // 越界
+                    int j0 = j >= cn ? j - cn : j;    
+                    int j2 = j < w - cn ? j + cn : j; 
                     WT p0 = row0[j0], p1 = row0[j], p2 = row0[j2];
                     WT p3 = row1[j0], p4 = row1[j], p5 = row1[j2];
                     WT p6 = row2[j0], p7 = row2[j], p8 = row2[j2];
 
-                    //行
+                    //row
                     op(p1, p2); op(p4, p5); op(p7, p8); op(p0, p1);
                     op(p3, p4); op(p6, p7); op(p1, p2); op(p4, p5);
                     op(p7, p8); 
-                    //列
+                    //col
                     op(p0, p3); op(p5, p8); op(p4, p7);
                     op(p3, p6); op(p1, p4); op(p2, p5); op(p4, p7);
-                    //对角
+                    //diagonal
                     op(p4, p2); op(p6, p4); op(p4, p2);
                     dptr[j] = (T)p4;
                 }
 
-                if (limit == w)// w == 1   作为跳出的判断条件
+                if (limit == w)
                     break;
 
                 //对于每行像素数量小于19(cn=3情况) j=3 < w-16-3 w> 22 (至少8个坐标)
@@ -332,10 +326,10 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
 static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn, int sstep, int dstep, int ksize)
 {
     #define N  16
-    int     zone0[4][N];//zone0 进行第一次快速查找 如果 考虑
-    int     zone1[4][N*N];
+    int     zone0[4][N];    // coarse search
+    int     zone1[4][N*N];  // fine search
 
-       int     n2 = ksize*ksize/2;
+    int     n2 = ksize*ksize/2;
     const uchar*  sptrMax = sptr + h * sstep;
     const uchar*  sptrTmp = sptr;
 
@@ -346,13 +340,10 @@ static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn,
         zone1[cn][p] op;                \
         zone0[cn][p >> 4] op;           \
     }
-    // TODO
+
     int x, y;
     int m = ksize;
-    // init accumulator
-        // memset( zone0, 0, sizeof(zone0[0])*cn );//根据cn初始化直方图
-        // memset( zone1, 0, sizeof(zone1[0])*cn );//已经重新初始化为什么需要反向再来一遍  结构体维持
-    //列遍历
+    //col
     for( x = 0; x < w; x++, sptr += cn, dptr += cn ){
         uchar* dst_cur = dptr;
         const uchar* src_top = sptr;
@@ -361,19 +352,18 @@ static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn,
         int src_step1 = sstep;
         int dst_step1 = dstep;
 
-        if( x % 2 != 0 )// 反过来是因为需要使用上一次的计算
+        if( x % 2 != 0 )// reverse ptr to height or 0
         {
-            src_bottom = src_top += sstep*(h-1);//指向最后一行
-            dst_cur += dstep*(h-1);             //指向最后一行
-            src_step1 = -src_step1;            //倒着计算的意思
-            dst_step1 = -dst_step1;            //
+            src_bottom = src_top += sstep*(h-1);
+            dst_cur += dstep*(h-1);             
+            src_step1 = -src_step1;            
+            dst_step1 = -dst_step1;            
         }
 
         // init accumulator
-        memset( zone0, 0, sizeof(zone0[0])*cn );//根据cn初始化直方图
-        memset( zone1, 0, sizeof(zone1[0])*cn );//已经重新初始化为什么需要反向再来一遍  结构体维持
-        // ？why only half kernel
-        // 动态边界的调整
+        memset( zone0, 0, sizeof(zone0[0])*cn );
+        memset( zone1, 0, sizeof(zone1[0])*cn );
+        // dynamic border adjust
         for( y = 0; y <= m/2; y++ )
         {
             for( c = 0; c < cn; c++ )
@@ -386,10 +376,7 @@ static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn,
                 else
                 {
                     for( k = 0; k < m*cn; k += cn ){
-                        UPDATE_ACC01(src_bottom[k+c], c, += m/2+1 ); // 为什么y=0的情况下需要+ m/2  右侧越界全为0
-                        //图像扩展边界的过程中使用了BORDER_REPLICATE，当y=0,需要+ m/2+1，从而得到m*m个数取中值
-                        //src_bottom越界如何处理？
-                        //(x * cn + k + c) > step ? 0 : 
+                        UPDATE_ACC01(src_bottom[k+c], c, += m/2+1 ); // line 0 complte ksize^2 number
                     }
                 }
             }
@@ -402,34 +389,29 @@ static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn,
         for( y = 0; y < h; y++, dst_cur += dst_step1 )
         {
             // find median
-            // zone0 zone1 查找中值
-            // 处理[x=0,y=0] 处的中值
             for( c = 0; c < cn; c++ )
             {
                 int s = 0;
                 for( k = 0; ; k++ )
                 {
                     int t = s + zone0[c][k];
-                    if( t > n2 ) break;//当出现的像素次数累加>滑动窗口一半大小跳出，表示在zone0的第k个区间存在中值
+                    if( t > n2 ) break;// could be percentage
                     s = t;
                 }
 
                 for( k *= N; ;k++ )
                 {
                     s += zone1[c][k];
-                    if( s > n2 ) break;//在zone1的第k个区间内查找具体的中值
+                    if( s > n2 ) break;//find median in zone1 kth range
                 }
 
                 dst_cur[c] = (uchar)k;//k [0-256] bins
             }
 
-            if( y+1 == h) //防止src_bottom越界访问
+            if( y+1 == h) //
                 break;
-            // what for？
             if( cn == 1 )
             {   
-                //将src_top的值对zone的影响消除，使用src_bottom重新加入
-                //此时src_top指向x=a行,src_bottom指向a+ m/2 + 1 行
                 for( k = 0; k < m; k++ )
                 {
                     int p = src_top[k];
@@ -495,9 +477,9 @@ typedef struct
 
 static inline void histogram_add_simd( const HT x[16], HT y[16] )
 {
-    const __m128i* rx = (const __m128i*)x;//将x转换为16个字节为单位的指针，则rx+0表示第一个16字节，rx+1表示第二个16字节
+    const __m128i* rx = (const __m128i*)x;//x to 16bits ptr，+0，+1 
     __m128i* ry = (__m128i*)y;
-    __m128i r0 = _mm_add_epi16(_mm_load_si128(ry+0),_mm_load_si128(rx+0));//注意溢出情况 add/adds
+    __m128i r0 = _mm_add_epi16(_mm_load_si128(ry+0),_mm_load_si128(rx+0));
     __m128i r1 = _mm_add_epi16(_mm_load_si128(ry+1),_mm_load_si128(rx+1));
     _mm_store_si128(ry+0, r0);
     _mm_store_si128(ry+1, r1);
@@ -537,9 +519,10 @@ static inline void histogram_muladd( int a, const HT x[16], HT y[16] )
         y[i] = (HT)(y[i] + a * x[i]);
 }
 
-// h_coarse cn=3 n r 的内存分布
-// 第一行  cn=0 {[0-15]_col0 [0-15]_col1...[0-15]_coln} cn=1{[0-15]_col0 [0-15]_col1...[0-15]_coln}  cn=2{[0-15]_col0 [0-15]_col1...[0-15]_coln} 
-//...同上
+// h_coarse cn=3 n r mem 
+// first line cn=0 {[0-15]_col0 [0-15]_col1...[0-15]_coln} 
+//            cn=1{[0-15]_col0 [0-15]_col1...[0-15]_coln}  
+//            cn=2{[0-15]_col0 [0-15]_col1...[0-15]_coln} 
 
 static void medianBlur8uO1(const uchar* sptr, uchar* dptr, int w, int h, int cn, int sstep, int dstep, int ksize) {
 /**
@@ -551,51 +534,47 @@ static void medianBlur8uO1(const uchar* sptr, uchar* dptr, int w, int h, int cn,
     h.coarse[x>>4] op, \
     *((HT*)h.fine + x) op
 
-// 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) = 16×16×*n*c + 16（n*x>>4+j)  + (x & 0xF)  = 混乱！！！！！！！！！！！！
+// 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) = 16×16×*n*c + 16（n*x>>4+j)  + (x & 0xF)  = 
 //   *** n=512,表示一个大块的列
 // coarse 1 * 16 * (STRIPE_SIZE + 2*r) * cn + 16; 列存储
 // fine 行存储！
 #define COP(c,j,x,op) \
     h_coarse[ 16*(n*c+j) + (x>>4) ] op, \
     h_fine[ 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) ] op
-    //看不懂h_fine的更新！！！
 
     //int cn = _dst.channels(), 
     int m = h;
     int r = (ksize-1)/2;
 
-    Histogram ALG_DECL_ALIGNED(16) H[4]; // 记录kernel的滤波直方图信息
+    Histogram ALG_DECL_ALIGNED(16) H[4]; // kernel histogram
     HT ALG_DECL_ALIGNED(16) luc[4][16];  // 
 
-    int STRIPE_SIZE = std::min( w, 512/cn );// 列分块的原理？ 512会不会根256统计有关系
+    int STRIPE_SIZE = std::min( w, 512/cn );// sth about cpucache
 
-    // 结构体 好难 理解
-    vector<HT> _h_coarse(1 * 16 * (STRIPE_SIZE + 2*r) * cn + 16);// 记录colum的直方图统计信息
-    vector<HT> _h_fine(16 * 16 * (STRIPE_SIZE + 2*r) * cn + 16);
-    HT* h_coarse = alignPtr(&_h_coarse[0], 16);//指针的字节对齐
-    HT* h_fine = alignPtr(&_h_fine[0], 16);//
+    vector<HT> _h_coarse(1 * 16 * (STRIPE_SIZE + 2*r) * cn + 16); // colum histogram coarse
+    vector<HT> _h_fine(16 * 16 * (STRIPE_SIZE + 2*r) * cn + 16);  // colum histogram fine
+    HT* h_coarse = alignPtr(&_h_coarse[0], 16);
+    HT* h_fine = alignPtr(&_h_fine[0], 16);
 #if MEDIAN_HAVE_SIMD
-    bool useSIMD = true;
+    bool useSIMD = true;// defalut TODO check cpu support
 #endif
     // col -> row
-    for( int x = 0; x < w; x += STRIPE_SIZE ) //STRIPE_SIZE列进行一次处理
+    for( int x = 0; x < w; x += STRIPE_SIZE ) //STRIPE_SIZE
     {
-        int i, j, k, c, n = std::min(w - x, STRIPE_SIZE) + r*2;//处理边界
+        int i, j, k, c, n = std::min(w - x, STRIPE_SIZE) + r*2;
         const uchar* src = sptr + x*cn;
         uchar* dst = dptr + (x - r)*cn;
 
-        memset( h_coarse, 0, 16*n*cn*sizeof(h_coarse[0]) );//不越界的判断
-        memset( h_fine, 0, 16*16*n*cn*sizeof(h_fine[0]) );//
+        memset( h_coarse, 0, 16*n*cn*sizeof(h_coarse[0]) );
+        memset( h_fine, 0, 16*16*n*cn*sizeof(h_fine[0]) );
 
-        // First row initialization
-        // column 直方图初始化前n列 
-        //h_coarse 每行按照通道数的增加依次统计像素的直方图
+        // First row initialization  column histogram 
         for( c = 0; c < cn; c++ )
         {
-            for( j = 0; j < n; j++ )//第一行n列
-                COP( c, j, src[cn*j+c], += r+2 );// 填充边界
+            for( j = 0; j < n; j++ )//first line 
+                COP( c, j, src[cn*j+c], += r+2 );
 
-            for( i = 1; i < r; i++ )// 遍历kernel行
+            for( i = 1; i < r; i++ )
             {
                 const uchar* p = src + sstep*std::min(i, m-1);
                 for ( j = 0; j < n; j++ )
@@ -627,7 +606,6 @@ static void medianBlur8uO1(const uchar* sptr, uchar* dptr, int w, int h, int cn,
             #if MEDIAN_HAVE_SIMD
                 if( useSIMD )
                 {   
-                    //前2r列赋值
                     for( j = 0; j < 2*r; ++j )
                         histogram_add_simd( &h_coarse[16*(n*c+j)], H[c].coarse );
                     //依次增加一列，更新H矩阵
@@ -775,23 +753,18 @@ void medianBlur(const uchar*sptr, uchar* dptr, int w, int h, int cn,int sstep, i
     if(ksize % 2 != 1) return;
     bool useSortNet = (ksize == 3 || ksize == 5)&& int(CV_SSE2);
     
-    // image preprocess
-   // if(!useSortNet) 0.
-        //TODO after copy border step will be 
-        //cv::copyMakeBorder( src0, src, 0, 0, ksize/2, ksize/2, BORDER_REPLICATE )
     if(useSortNet) {
         medianBlurSortNet(sptr, dptr, w, h, cn, sstep, dstep, ksize);
         return;
     }
     double img_size_mp = (double)(w * h)/(1 << 20); // 1024 *1024 compare
 
-    // 根据核的大小来采用不同的方法进行排序
-    // 根据图像大小动态调整Om/01方法
+    // kernel size by image size and SIMD
     // [0-1024]-> k=15
     // [1024,4048] -> k =9
     // [4048,+]  -> k = 5 
     bool useSIMD = CV_SSE2;//check cpu support
-    if( ksize <= 3 + (img_size_mp < 1 ? 12 : img_size_mp < 4 ? 6 : 2)*(useSIMD))//分类情况跟我想象的不太一样！！
+    if( ksize <= 3 + (img_size_mp < 1 ? 12 : img_size_mp < 4 ? 6 : 2)*(useSIMD))
         medianBlur8uOm(sptr, dptr, w, h, cn, sstep, dstep, ksize);
     else
         medianBlur8uO1(sptr, dptr, w, h, cn, sstep, dstep, ksize);
