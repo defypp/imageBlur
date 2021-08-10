@@ -127,16 +127,15 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
         {
             int len = w + h - 1;
             int sdelta = h == 1 ? cn : sstep;//如果是一行的情况，[1,2,3] [4,5,6] [7,8,9] sdelta=3,当ptr指向4, 则 p0 = 1, p1 = 4, p2 = 7
-                                            //多行情况下， 
-            int sdelta0 = h == 1 ? 0 : sstep - cn;//无论三通道还是单通道好像都是0,用于字节对齐的，见readme.md
-            int ddelta = h == 1 ? cn : dstep;//同sdelta
+            int sdelta0 = h == 1 ? 0 : sstep - cn;//无论三通道还是单通道好像都是0,用于字节对齐的，
+            int ddelta = h == 1 ? cn : dstep;//
 
             for (i = 0; i < len; i++, sptr += sdelta0, dptr += ddelta){
                 for (j = 0; j < cn; j++, sptr++)
                 {
-                    WT p0 = sptr[i > 0 ? -sdelta : 0];//防止越界的处理方法
+                    WT p0 = sptr[i > 0 ? -sdelta : 0];
                     WT p1 = sptr[0];
-                    WT p2 = sptr[i < len - 1 ? sdelta : 0];//防止越界的处理方法
+                    WT p2 = sptr[i < len - 1 ? sdelta : 0];
 
                     op(p0, p1); op(p1, p2); op(p0, p1);
                     dptr[j] = (T)p1;
@@ -155,7 +154,6 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
 
             for (j = 0;;)
             {	
-                //对channel通道的每个数
                 for (; j < limit; j++)
                 {
                     int j0 = j >= cn ? j - cn : j;    
@@ -179,12 +177,10 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
                 if (limit == w)
                     break;
 
-                //对于每行像素数量小于19(cn=3情况) j=3 < w-16-3 w> 22 (至少8个坐标)
-                //寄存器是128位，16个字节
-                int v = VecOp::SIZE - cn;//调用单位16个字节
-                for (; j <= w - v; j += VecOp::SIZE)
+                int v = VecOp::SIZE - cn;
+                for (; j <= w - v; j += VecOp::SIZE)// step size 16bits
                 {
-                    VT p0 = vop.load(row0 + j - cn), p1 = vop.load(row0 + j), p2 = vop.load(row0 + j + cn);//一次性加载16个字节
+                    VT p0 = vop.load(row0 + j - cn), p1 = vop.load(row0 + j), p2 = vop.load(row0 + j + cn);
                     VT p3 = vop.load(row1 + j - cn), p4 = vop.load(row1 + j), p5 = vop.load(row1 + j + cn);
                     VT p6 = vop.load(row2 + j - cn), p7 = vop.load(row2 + j), p8 = vop.load(row2 + j + cn);
 
@@ -230,12 +226,12 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
             row[3] = sptr + MIN(i + 1, h-1)*sstep;
             row[4] = sptr + MIN(i + 2, h-1)*sstep;
             //
-            int limit = useSIMD ? cn*2 : w;// 批处理分界线
-            // 对前后2×cn的像素进行特殊处理
+            int limit = useSIMD ? cn*2 : w;
+            //
             for(j = 0;; ){
                 for( ; j < limit; j++ ){
                     WT p[25];
-                    int j1 = j >= cn ? j - cn : j; //limits
+                    int j1 = j >= cn ? j - cn : j; 
                     int j0 = j >= cn*2 ? j - cn*2 : j1;
                     int j3 = j < w - cn ? j + cn : j;
                     int j4 = j < w - cn*2 ? j + cn*2 : j3;
@@ -322,7 +318,7 @@ static void medianBlurSortNet(const uchar* sptr, uchar* dptr, int w, int h, int 
     }
 
 }
-
+//****************************************medianBlur8uOm*******************************************
 static void medianBlur8uOm(const uchar* sptr, uchar* dptr, int w, int h, int cn, int sstep, int dstep, int ksize)
 {
     #define N  16
@@ -534,10 +530,7 @@ static void medianBlur8uO1(const uchar* sptr, uchar* dptr, int w, int h, int cn,
     h.coarse[x>>4] op, \
     *((HT*)h.fine + x) op
 
-// 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) = 16×16×*n*c + 16（n*x>>4+j)  + (x & 0xF)  = 
-//   *** n=512,表示一个大块的列
-// coarse 1 * 16 * (STRIPE_SIZE + 2*r) * cn + 16; 列存储
-// fine 行存储！
+
 #define COP(c,j,x,op) \
     h_coarse[ 16*(n*c+j) + (x>>4) ] op, \
     h_fine[ 16 * (n*(16*c+(x>>4)) + j) + (x & 0xF) ] op
